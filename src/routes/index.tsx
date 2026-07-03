@@ -232,9 +232,11 @@ function Arena() {
       if (!t) break;
       priorTurns = [...priorTurns, t];
       setTurns(priorTurns);
+      playBlip(t.side);
       nextSide = nextSide === "A" ? "B" : "A";
-      // small breath so UI can update and user can hit stop
-      await new Promise((r) => setTimeout(r, 150));
+      // speed: 1x => 900ms delay, higher = shorter, lower = longer
+      const delay = Math.max(50, Math.round(900 / speedRef.current));
+      await new Promise((r) => setTimeout(r, delay));
       if (priorTurns.length >= 40) break; // hard safety cap
     }
 
