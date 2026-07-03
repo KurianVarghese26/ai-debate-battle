@@ -241,7 +241,7 @@ function Arena() {
     }
 
     setRunning(false);
-  }, [running, runTurn, topic]);
+  }, [running, runTurn, topic, playBlip]);
 
   const stop = useCallback(() => {
     stopRequestedRef.current = true;
