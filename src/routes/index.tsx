@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Square, RotateCcw, Trash2, History, Swords } from "lucide-react";
+import { Play, Square, RotateCcw, Trash2, History, Swords, Volume2, VolumeX, Gauge } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -76,6 +77,8 @@ function Arena() {
     "Is remote work better for creative teams than being in the same room?",
   );
   const [history, setHistory] = useLocalStorage<SavedDebate[]>("dom.history", []);
+  const [speed, setSpeed] = useLocalStorage<number>("dom.speed", 1); // 0.25x .. 3x
+  const [soundOn, setSoundOn] = useLocalStorage<boolean>("dom.sound", true);
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [streaming, setStreaming] = useState<{ side: SideKey; text: string } | null>(null);
@@ -84,6 +87,35 @@ function Arena() {
   const abortRef = useRef<AbortController | null>(null);
   const stopRequestedRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const speedRef = useRef(speed);
+  const soundRef = useRef(soundOn);
+  useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
+
+  const playBlip = useCallback((side: SideKey) => {
+    if (!soundRef.current) return;
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!audioCtxRef.current) audioCtxRef.current = new AC();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") void ctx.resume();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = side === "A" ? 660 : 440;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.15, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } catch {
+      // ignore
+    }
+  }, []);
+
 
   const savedRef = useRef(false);
   useEffect(() => {
@@ -199,14 +231,16 @@ function Arena() {
       if (!t) break;
       priorTurns = [...priorTurns, t];
       setTurns(priorTurns);
+      playBlip(t.side);
       nextSide = nextSide === "A" ? "B" : "A";
-      // small breath so UI can update and user can hit stop
-      await new Promise((r) => setTimeout(r, 150));
+      // speed: 1x => 900ms delay, higher = shorter, lower = longer
+      const delay = Math.max(50, Math.round(900 / speedRef.current));
+      await new Promise((r) => setTimeout(r, delay));
       if (priorTurns.length >= 40) break; // hard safety cap
     }
 
     setRunning(false);
-  }, [running, runTurn, topic]);
+  }, [running, runTurn, topic, playBlip]);
 
   const stop = useCallback(() => {
     stopRequestedRef.current = true;
@@ -376,6 +410,32 @@ function Arena() {
                 Debating…
               </span>
             )}
+
+            <div className="ml-auto flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSoundOn(!soundOn)}
+                  className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
+                  aria-label={soundOn ? "Mute" : "Unmute"}
+                  title={soundOn ? "Sound on" : "Sound off"}
+                >
+                  {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="flex min-w-[180px] items-center gap-2">
+                <Gauge className="h-4 w-4 text-slate-400" />
+                <Slider
+                  value={[speed]}
+                  min={0.25}
+                  max={3}
+                  step={0.25}
+                  onValueChange={(v) => setSpeed(v[0] ?? 1)}
+                  className="w-32"
+                />
+                <span className="w-10 text-right text-xs tabular-nums text-slate-400">{speed.toFixed(2)}x</span>
+              </div>
+            </div>
           </div>
         </div>
 
