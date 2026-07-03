@@ -411,6 +411,32 @@ function Arena() {
                 Debating…
               </span>
             )}
+
+            <div className="ml-auto flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSoundOn(!soundOn)}
+                  className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
+                  aria-label={soundOn ? "Mute" : "Unmute"}
+                  title={soundOn ? "Sound on" : "Sound off"}
+                >
+                  {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="flex min-w-[180px] items-center gap-2">
+                <Gauge className="h-4 w-4 text-slate-400" />
+                <Slider
+                  value={[speed]}
+                  min={0.25}
+                  max={3}
+                  step={0.25}
+                  onValueChange={(v) => setSpeed(v[0] ?? 1)}
+                  className="w-32"
+                />
+                <span className="w-10 text-right text-xs tabular-nums text-slate-400">{speed.toFixed(2)}x</span>
+              </div>
+            </div>
           </div>
         </div>
 
