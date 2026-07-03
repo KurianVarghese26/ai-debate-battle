@@ -78,6 +78,8 @@ function Arena() {
     "Is remote work better for creative teams than being in the same room?",
   );
   const [history, setHistory] = useLocalStorage<SavedDebate[]>("dom.history", []);
+  const [speed, setSpeed] = useLocalStorage<number>("dom.speed", 1); // 0.25x .. 3x
+  const [soundOn, setSoundOn] = useLocalStorage<boolean>("dom.sound", true);
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [streaming, setStreaming] = useState<{ side: SideKey; text: string } | null>(null);
@@ -86,6 +88,35 @@ function Arena() {
   const abortRef = useRef<AbortController | null>(null);
   const stopRequestedRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const speedRef = useRef(speed);
+  const soundRef = useRef(soundOn);
+  useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
+
+  const playBlip = useCallback((side: SideKey) => {
+    if (!soundRef.current) return;
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!audioCtxRef.current) audioCtxRef.current = new AC();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") void ctx.resume();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = side === "A" ? 660 : 440;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.15, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } catch {
+      // ignore
+    }
+  }, []);
+
 
   const savedRef = useRef(false);
   useEffect(() => {
