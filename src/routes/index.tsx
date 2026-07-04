@@ -234,9 +234,9 @@ function Arena() {
       setTurns(priorTurns);
       playBlip(t.side);
       nextSide = nextSide === "A" ? "B" : "A";
-      // speed: 1x => 900ms delay, higher = shorter, lower = longer
-      const delay = Math.max(50, Math.round(900 / speedRef.current));
-      await new Promise((r) => setTimeout(r, delay));
+      // Pause between replies (seconds) so the reader can catch up.
+      const delay = Math.max(0, Math.round(pauseRef.current * 1000));
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       if (priorTurns.length >= 40) break; // hard safety cap
     }
 
