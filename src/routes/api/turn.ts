@@ -10,17 +10,59 @@ export const Route = createFileRoute("/api/turn")({
         const key = process.env.LOVABLE_API_KEY;
         if (!key) return new Response("Missing LOVABLE_API_KEY", { status: 500 });
 
+        // Same-origin gate: this endpoint only exists to power the app UI.
+        // Block cross-origin callers to prevent cost-abuse from external scripts.
+        const origin = request.headers.get("origin");
+        const referer = request.headers.get("referer");
+        const host = request.headers.get("host");
+        const originHost = (() => {
+          try { return origin ? new URL(origin).host : referer ? new URL(referer).host : null; }
+          catch { return null; }
+        })();
+        if (!originHost || !host || originHost !== host) {
+          return new Response("Forbidden", { status: 403 });
+        }
+
+        // Cap raw body size before parsing (defense against huge payloads).
+        const MAX_BODY_BYTES = 32 * 1024; // 32 KB
+        const raw = await request.text();
+        if (raw.length > MAX_BODY_BYTES) {
+          return new Response("Payload too large", { status: 413 });
+        }
+
         let body: Body;
         try {
-          body = (await request.json()) as Body;
+          body = JSON.parse(raw) as Body;
         } catch {
           return new Response("Invalid JSON", { status: 400 });
         }
 
         const model = body.model?.trim();
         const messages = body.messages ?? [];
-        if (!model || !Array.isArray(messages) || messages.length === 0) {
+        if (!model || model.length > 128 || !Array.isArray(messages) || messages.length === 0) {
           return new Response("model and messages are required", { status: 400 });
+        }
+
+        // Bound conversation size.
+        const MAX_MESSAGES = 60;
+        const MAX_MSG_CHARS = 4000;
+        const MAX_SYSTEM_CHARS = 4000;
+        if (messages.length > MAX_MESSAGES) {
+          return new Response("Too many messages", { status: 400 });
+        }
+        for (const m of messages) {
+          if (!m || typeof m.content !== "string" || typeof m.role !== "string") {
+            return new Response("Invalid message", { status: 400 });
+          }
+          if (m.content.length > MAX_MSG_CHARS) {
+            return new Response("Message too long", { status: 400 });
+          }
+          if (m.role !== "system" && m.role !== "user" && m.role !== "assistant") {
+            return new Response("Invalid role", { status: 400 });
+          }
+        }
+        if (body.system && body.system.length > MAX_SYSTEM_CHARS) {
+          return new Response("System prompt too long", { status: 400 });
         }
 
         const finalMessages: ChatMsg[] = body.system
