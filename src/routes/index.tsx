@@ -220,6 +220,14 @@ function Arena() {
       toast.error("Add a topic first.");
       return;
     }
+    // Prime AudioContext inside the user gesture — browsers block audio otherwise.
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!audioCtxRef.current) audioCtxRef.current = new AC();
+      if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+    } catch {
+      // ignore — sound will just be off
+    }
     stopRequestedRef.current = false;
     setRunning(true);
     setTurns([]);
