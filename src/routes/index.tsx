@@ -567,6 +567,45 @@ function SideCard({
 function TurnBubble({ turn }: { turn: Turn }) {
   const isA = turn.side === "A";
   const modelLabel = MODELS.find((m) => m.id === turn.model)?.label ?? turn.model;
+  const [speaking, setSpeaking] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      // stop this bubble's speech when unmounted
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        // no-op safeguard; global cancel handled by toggle
+      }
+    };
+  }, []);
+
+  const toggleSpeak = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast.error("Text-to-speech isn't supported in this browser.");
+      return;
+    }
+    const synth = window.speechSynthesis;
+    if (speaking) {
+      synth.cancel();
+      setSpeaking(false);
+      return;
+    }
+    synth.cancel(); // stop any other bubble currently reading
+    const u = new SpeechSynthesisUtterance(turn.text);
+    u.rate = 1;
+    u.pitch = isA ? 1.05 : 0.95;
+    // Try to pick distinct voices per side if available.
+    const voices = synth.getVoices();
+    if (voices.length) {
+      const preferred = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
+      const pool = preferred.length ? preferred : voices;
+      u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
+    }
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    setSpeaking(true);
+    synth.speak(u);
+  };
+
   return (
     <div className={`flex ${isA ? "justify-start" : "justify-end"}`}>
       <div
@@ -580,9 +619,19 @@ function TurnBubble({ turn }: { turn: Turn }) {
           <span className={`h-1.5 w-1.5 rounded-full ${isA ? "bg-fuchsia-500" : "bg-cyan-400"}`} />
           <span className="font-medium text-slate-200">{turn.name}</span>
           <span className="text-slate-500">· {modelLabel}</span>
+          <button
+            type="button"
+            onClick={toggleSpeak}
+            aria-label={speaking ? "Stop reading" : "Read aloud"}
+            title={speaking ? "Stop reading" : "Read aloud"}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-white/10 bg-slate-950/40 text-slate-300 hover:text-slate-100"
+          >
+            {speaking ? <StopCircle className="h-3.5 w-3.5" /> : <Volume1 className="h-3.5 w-3.5" />}
+          </button>
         </div>
         <p className="whitespace-pre-wrap text-slate-100">{turn.text}</p>
       </div>
     </div>
   );
 }
+
