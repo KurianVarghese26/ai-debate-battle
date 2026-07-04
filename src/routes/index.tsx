@@ -77,7 +77,8 @@ function Arena() {
     "Is remote work better for creative teams than being in the same room?",
   );
   const [history, setHistory] = useLocalStorage<SavedDebate[]>("dom.history", []);
-  const [speed, setSpeed] = useLocalStorage<number>("dom.speed", 1); // 0.25x .. 3x
+  // Pause (seconds) between replies so you have time to read.
+  const [pause, setPause] = useLocalStorage<number>("dom.pause", 1.5);
   const [soundOn, setSoundOn] = useLocalStorage<boolean>("dom.sound", true);
 
   const [turns, setTurns] = useState<Turn[]>([]);
