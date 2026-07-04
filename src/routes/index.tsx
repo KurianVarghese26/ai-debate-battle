@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Square, RotateCcw, Trash2, History, Swords, Volume2, VolumeX, Gauge } from "lucide-react";
+import { Play, Square, RotateCcw, Trash2, History, Swords, Volume2, VolumeX, Gauge, Volume1, StopCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
