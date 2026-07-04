@@ -424,17 +424,18 @@ function Arena() {
                   {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
                 </button>
               </div>
-              <div className="flex min-w-[180px] items-center gap-2">
+              <div className="flex min-w-[220px] items-center gap-2">
                 <Gauge className="h-4 w-4 text-slate-400" />
+                <span className="text-xs text-slate-400">Pause</span>
                 <Slider
-                  value={[speed]}
-                  min={0.25}
-                  max={3}
-                  step={0.25}
-                  onValueChange={(v) => setSpeed(v[0] ?? 1)}
-                  className="w-32"
+                  value={[pause]}
+                  min={0}
+                  max={15}
+                  step={0.5}
+                  onValueChange={(v) => setPause(v[0] ?? 1.5)}
+                  className="w-40"
                 />
-                <span className="w-10 text-right text-xs tabular-nums text-slate-400">{speed.toFixed(2)}x</span>
+                <span className="w-12 text-right text-xs tabular-nums text-slate-400">{pause.toFixed(1)}s</span>
               </div>
             </div>
           </div>
