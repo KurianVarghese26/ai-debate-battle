@@ -89,9 +89,9 @@ function Arena() {
   const stopRequestedRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const speedRef = useRef(speed);
+  const pauseRef = useRef(pause);
   const soundRef = useRef(soundOn);
-  useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => { pauseRef.current = pause; }, [pause]);
   useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
 
   const playBlip = useCallback((side: SideKey) => {
