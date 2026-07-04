@@ -77,7 +77,8 @@ function Arena() {
     "Is remote work better for creative teams than being in the same room?",
   );
   const [history, setHistory] = useLocalStorage<SavedDebate[]>("dom.history", []);
-  const [speed, setSpeed] = useLocalStorage<number>("dom.speed", 1); // 0.25x .. 3x
+  // Pause (seconds) between replies so you have time to read.
+  const [pause, setPause] = useLocalStorage<number>("dom.pause", 1.5);
   const [soundOn, setSoundOn] = useLocalStorage<boolean>("dom.sound", true);
 
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -88,9 +89,9 @@ function Arena() {
   const stopRequestedRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const speedRef = useRef(speed);
+  const pauseRef = useRef(pause);
   const soundRef = useRef(soundOn);
-  useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => { pauseRef.current = pause; }, [pause]);
   useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
 
   const playBlip = useCallback((side: SideKey) => {
@@ -219,6 +220,14 @@ function Arena() {
       toast.error("Add a topic first.");
       return;
     }
+    // Prime AudioContext inside the user gesture — browsers block audio otherwise.
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!audioCtxRef.current) audioCtxRef.current = new AC();
+      if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+    } catch {
+      // ignore — sound will just be off
+    }
     stopRequestedRef.current = false;
     setRunning(true);
     setTurns([]);
@@ -233,9 +242,9 @@ function Arena() {
       setTurns(priorTurns);
       playBlip(t.side);
       nextSide = nextSide === "A" ? "B" : "A";
-      // speed: 1x => 900ms delay, higher = shorter, lower = longer
-      const delay = Math.max(50, Math.round(900 / speedRef.current));
-      await new Promise((r) => setTimeout(r, delay));
+      // Pause between replies (seconds) so the reader can catch up.
+      const delay = Math.max(0, Math.round(pauseRef.current * 1000));
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       if (priorTurns.length >= 40) break; // hard safety cap
     }
 
@@ -415,7 +424,29 @@ function Arena() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSoundOn(!soundOn)}
+                  onClick={() => {
+                    const next = !soundOn;
+                    setSoundOn(next);
+                    if (next) {
+                      try {
+                        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+                        if (!audioCtxRef.current) audioCtxRef.current = new AC();
+                        if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+                        // Tiny click so the user hears sound is on.
+                        const ctx = audioCtxRef.current;
+                        const now = ctx.currentTime;
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.frequency.value = 550;
+                        gain.gain.setValueAtTime(0.0001, now);
+                        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+                        osc.connect(gain).connect(ctx.destination);
+                        osc.start(now);
+                        osc.stop(now + 0.2);
+                      } catch { /* ignore */ }
+                    }
+                  }}
                   className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
                   aria-label={soundOn ? "Mute" : "Unmute"}
                   title={soundOn ? "Sound on" : "Sound off"}
@@ -423,17 +454,18 @@ function Arena() {
                   {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
                 </button>
               </div>
-              <div className="flex min-w-[180px] items-center gap-2">
+              <div className="flex min-w-[220px] items-center gap-2">
                 <Gauge className="h-4 w-4 text-slate-400" />
+                <span className="text-xs text-slate-400">Pause</span>
                 <Slider
-                  value={[speed]}
-                  min={0.25}
-                  max={3}
-                  step={0.25}
-                  onValueChange={(v) => setSpeed(v[0] ?? 1)}
-                  className="w-32"
+                  value={[pause]}
+                  min={0}
+                  max={15}
+                  step={0.5}
+                  onValueChange={(v) => setPause(v[0] ?? 1.5)}
+                  className="w-40"
                 />
-                <span className="w-10 text-right text-xs tabular-nums text-slate-400">{speed.toFixed(2)}x</span>
+                <span className="w-12 text-right text-xs tabular-nums text-slate-400">{pause.toFixed(1)}s</span>
               </div>
             </div>
           </div>
