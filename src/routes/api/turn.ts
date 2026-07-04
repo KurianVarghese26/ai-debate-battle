@@ -14,12 +14,12 @@ export const Route = createFileRoute("/api/turn")({
         // Block cross-origin callers to prevent cost-abuse from external scripts.
         const origin = request.headers.get("origin");
         const referer = request.headers.get("referer");
-        const host = request.headers.get("host");
+        const requestHost = new URL(request.url).host;
         const originHost = (() => {
           try { return origin ? new URL(origin).host : referer ? new URL(referer).host : null; }
           catch { return null; }
         })();
-        if (!originHost || !host || originHost !== host) {
+        if (!originHost || originHost !== requestHost) {
           return new Response("Forbidden", { status: 403 });
         }
 
