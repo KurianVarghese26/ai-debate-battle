@@ -424,7 +424,29 @@ function Arena() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSoundOn(!soundOn)}
+                  onClick={() => {
+                    const next = !soundOn;
+                    setSoundOn(next);
+                    if (next) {
+                      try {
+                        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+                        if (!audioCtxRef.current) audioCtxRef.current = new AC();
+                        if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+                        // Tiny click so the user hears sound is on.
+                        const ctx = audioCtxRef.current;
+                        const now = ctx.currentTime;
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.frequency.value = 550;
+                        gain.gain.setValueAtTime(0.0001, now);
+                        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+                        osc.connect(gain).connect(ctx.destination);
+                        osc.start(now);
+                        osc.stop(now + 0.2);
+                      } catch { /* ignore */ }
+                    }
+                  }}
                   className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
                   aria-label={soundOn ? "Mute" : "Unmute"}
                   title={soundOn ? "Sound on" : "Sound off"}
