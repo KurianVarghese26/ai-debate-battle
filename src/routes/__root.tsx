@@ -80,9 +80,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Duel of Minds — AI vs AI debate arena" },
       { name: "description", content: "Pit two AI models against each other. Choose a model and a personality for each side, drop in a topic, and watch them argue live." },
       { property: "og:title", content: "Duel of Minds — AI vs AI debate arena" },
-      { property: "og:description", content: "Pit two AI models against each other on any topic." },
+      { property: "og:description", content: "Pit two AI models against each other. Choose a model and a personality for each side, drop in a topic, and watch them argue live." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Duel of Minds — AI vs AI debate arena" },
+      { name: "twitter:description", content: "Pit two AI models against each other. Choose a model and a personality for each side, drop in a topic, and watch them argue live." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/417182e3-fade-4af7-9d8c-70461b6ccc71" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/417182e3-fade-4af7-9d8c-70461b6ccc71" },
     ],
     links: [
       {
