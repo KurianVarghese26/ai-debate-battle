@@ -69,6 +69,14 @@ const READ_LANGS: { code: string; label: string }[] = [
   { code: "ru-RU", label: "Russian" },
 ];
 
+const READ_STOP_EVENT = "duel-of-minds-stop-reading";
+
+function stopBrowserSpeech() {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+}
+
 function buildSystem(self: SideConfig, other: SideConfig, topic: string) {
   return `You are ${self.name}, one of two AI debaters in a live back-and-forth.
 
@@ -613,24 +621,86 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
   const isA = turn.side === "A";
   const modelLabel = MODELS.find((m) => m.id === turn.model)?.label ?? turn.model;
   const [speaking, setSpeaking] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechAbortRef = useRef<AbortController | null>(null);
 
-  const toggleSpeak = () => {
+  const stopReading = useCallback(() => {
+    stopBrowserSpeech();
+    speechAbortRef.current?.abort();
+    speechAbortRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    setSpeaking(false);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => stopReading();
+    window.addEventListener(READ_STOP_EVENT, handler);
+    return () => {
+      window.removeEventListener(READ_STOP_EVENT, handler);
+      stopReading();
+    };
+  }, [stopReading]);
+
+  const speakWithGeneratedAudio = useCallback(async () => {
+    const controller = new AbortController();
+    speechAbortRef.current = controller;
+    const res = await fetch("/api/speech", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: turn.text, lang: readLang, speed: 1 }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const message = await res.text().catch(() => "");
+      throw new Error(message || `Text-to-speech failed (${res.status})`);
+    }
+    const blob = await res.blob();
+    if (controller.signal.aborted) return;
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      if (audioRef.current === audio) audioRef.current = null;
+      setSpeaking(false);
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      if (audioRef.current === audio) audioRef.current = null;
+      setSpeaking(false);
+      toast.error("Audio playback failed.");
+    };
+    await audio.play();
+  }, [readLang, turn.text]);
+
+  const toggleSpeak = async () => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast.error("Text-to-speech isn't supported in this browser.");
+      try {
+        window.dispatchEvent(new Event(READ_STOP_EVENT));
+        setSpeaking(true);
+        await speakWithGeneratedAudio();
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") toast.error((error as Error).message || "Text-to-speech failed.");
+        setSpeaking(false);
+      }
       return;
     }
     const synth = window.speechSynthesis;
     if (speaking) {
-      synth.cancel();
-      setSpeaking(false);
+      stopReading();
       return;
     }
-    synth.cancel(); // stop any other bubble currently reading
+    window.dispatchEvent(new Event(READ_STOP_EVENT));
     const u = new SpeechSynthesisUtterance(turn.text);
     u.lang = readLang;
     u.rate = 1;
     u.pitch = isA ? 1.05 : 0.95;
     const voices = synth.getVoices();
+    let hasMatchingVoice = false;
     if (voices.length) {
       const wantLang = readLang.toLowerCase();
       const wantPrefix = wantLang.split("-")[0];
@@ -639,10 +709,21 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
       const pool = exact.length ? exact : prefix.length ? prefix : [];
       if (pool.length) {
         u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
-      } else {
-        toast.message(`No ${readLang} voice installed on this device — using system default.`);
+        hasMatchingVoice = true;
       }
     }
+
+    if (!hasMatchingVoice) {
+      try {
+        setSpeaking(true);
+        await speakWithGeneratedAudio();
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") toast.error((error as Error).message || "Text-to-speech failed.");
+        setSpeaking(false);
+      }
+      return;
+    }
+
     u.onend = () => setSpeaking(false);
     u.onerror = () => setSpeaking(false);
     setSpeaking(true);
