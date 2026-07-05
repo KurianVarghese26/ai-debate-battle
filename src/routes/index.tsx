@@ -481,7 +481,9 @@ function Arena() {
 
         <div
           ref={transcriptRef}
-          className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-white/10 bg-slate-950/40 p-4"
+          onScroll={onTranscriptScroll}
+          className="mt-4 h-[60vh] space-y-3 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-slate-950/40 p-4"
+          style={{ WebkitOverflowScrolling: "touch" }}
         >
           {liveTurns.length === 0 && (
             <div className="py-16 text-center text-sm text-slate-500">
@@ -489,7 +491,7 @@ function Arena() {
             </div>
           )}
           {liveTurns.map((t, i) => (
-            <TurnBubble key={i} turn={t} />
+            <TurnBubble key={i} turn={t} readLang={readLang} />
           ))}
         </div>
       </main>
