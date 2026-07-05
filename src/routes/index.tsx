@@ -140,10 +140,17 @@ function Arena() {
     setHistory((prev) => [entry, ...prev].slice(0, 50));
   }, [running, turns, topic, sideA, sideB, setHistory]);
 
+  const stickToBottomRef = useRef(true);
+  const onTranscriptScroll = useCallback(() => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distance < 80;
+  }, []);
   useEffect(() => {
     const el = transcriptRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [turns, streaming]);
 
   const runTurn = useCallback(
