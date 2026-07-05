@@ -49,6 +49,26 @@ const DEFAULT_B: SideConfig = {
   persona: "A skeptical contrarian. Blunt, dry humor, pokes holes in every claim.",
 };
 
+const READ_LANGS: { code: string; label: string }[] = [
+  { code: "en-US", label: "English (US)" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "en-IN", label: "English (IN)" },
+  { code: "ml-IN", label: "Malayalam" },
+  { code: "hi-IN", label: "Hindi" },
+  { code: "ta-IN", label: "Tamil" },
+  { code: "te-IN", label: "Telugu" },
+  { code: "es-ES", label: "Spanish" },
+  { code: "fr-FR", label: "French" },
+  { code: "de-DE", label: "German" },
+  { code: "it-IT", label: "Italian" },
+  { code: "pt-BR", label: "Portuguese" },
+  { code: "ja-JP", label: "Japanese" },
+  { code: "ko-KR", label: "Korean" },
+  { code: "zh-CN", label: "Chinese" },
+  { code: "ar-SA", label: "Arabic" },
+  { code: "ru-RU", label: "Russian" },
+];
+
 function buildSystem(self: SideConfig, other: SideConfig, topic: string) {
   return `You are ${self.name}, one of two AI debaters in a live back-and-forth.
 
