@@ -609,19 +609,10 @@ function SideCard({
   );
 }
 
-function TurnBubble({ turn }: { turn: Turn }) {
+function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
   const isA = turn.side === "A";
   const modelLabel = MODELS.find((m) => m.id === turn.model)?.label ?? turn.model;
   const [speaking, setSpeaking] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      // stop this bubble's speech when unmounted
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        // no-op safeguard; global cancel handled by toggle
-      }
-    };
-  }, []);
 
   const toggleSpeak = () => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -636,14 +627,21 @@ function TurnBubble({ turn }: { turn: Turn }) {
     }
     synth.cancel(); // stop any other bubble currently reading
     const u = new SpeechSynthesisUtterance(turn.text);
+    u.lang = readLang;
     u.rate = 1;
     u.pitch = isA ? 1.05 : 0.95;
-    // Try to pick distinct voices per side if available.
     const voices = synth.getVoices();
     if (voices.length) {
-      const preferred = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
-      const pool = preferred.length ? preferred : voices;
-      u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
+      const wantLang = readLang.toLowerCase();
+      const wantPrefix = wantLang.split("-")[0];
+      const exact = voices.filter((v) => v.lang.toLowerCase() === wantLang);
+      const prefix = voices.filter((v) => v.lang.toLowerCase().startsWith(wantPrefix));
+      const pool = exact.length ? exact : prefix.length ? prefix : [];
+      if (pool.length) {
+        u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
+      } else {
+        toast.message(`No ${readLang} voice installed on this device — using system default.`);
+      }
     }
     u.onend = () => setSpeaking(false);
     u.onerror = () => setSpeaking(false);
