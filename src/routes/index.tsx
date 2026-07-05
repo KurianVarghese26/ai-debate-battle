@@ -678,7 +678,8 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
   }, [readLang, turn.text]);
 
   const toggleSpeak = async () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    if (typeof window === "undefined") return;
+    if (!("speechSynthesis" in window)) {
       try {
         window.dispatchEvent(new Event(READ_STOP_EVENT));
         setSpeaking(true);
