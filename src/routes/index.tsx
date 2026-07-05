@@ -475,6 +475,21 @@ function Arena() {
                 />
                 <span className="w-12 text-right text-xs tabular-nums text-slate-400">{pause.toFixed(1)}s</span>
               </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Voice</span>
+                <Select value={readLang} onValueChange={setReadLang}>
+                  <SelectTrigger className="h-8 w-[140px] border-white/10 bg-slate-950/50 text-xs text-slate-100">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {READ_LANGS.map((l) => (
+                      <SelectItem key={l.code} value={l.code} className="text-xs">
+                        {l.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>
