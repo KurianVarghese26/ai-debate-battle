@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTurnRouteImport } from './routes/api/turn'
+import { Route as ApiSpeechRouteImport } from './routes/api/speech'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,30 +23,39 @@ const ApiTurnRoute = ApiTurnRouteImport.update({
   path: '/api/turn',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSpeechRoute = ApiSpeechRouteImport.update({
+  id: '/api/speech',
+  path: '/api/speech',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/speech': typeof ApiSpeechRoute
   '/api/turn': typeof ApiTurnRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/speech': typeof ApiSpeechRoute
   '/api/turn': typeof ApiTurnRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/speech': typeof ApiSpeechRoute
   '/api/turn': typeof ApiTurnRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/turn'
+  fullPaths: '/' | '/api/speech' | '/api/turn'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/turn'
-  id: '__root__' | '/' | '/api/turn'
+  to: '/' | '/api/speech' | '/api/turn'
+  id: '__root__' | '/' | '/api/speech' | '/api/turn'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiSpeechRoute: typeof ApiSpeechRoute
   ApiTurnRoute: typeof ApiTurnRoute
 }
 
@@ -65,11 +75,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTurnRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/speech': {
+      id: '/api/speech'
+      path: '/api/speech'
+      fullPath: '/api/speech'
+      preLoaderRoute: typeof ApiSpeechRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiSpeechRoute: ApiSpeechRoute,
   ApiTurnRoute: ApiTurnRoute,
 }
 export const routeTree = rootRouteImport
