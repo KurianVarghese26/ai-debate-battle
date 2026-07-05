@@ -80,6 +80,7 @@ function Arena() {
   // Pause (seconds) between replies so you have time to read.
   const [pause, setPause] = useLocalStorage<number>("dom.pause", 1.5);
   const [soundOn, setSoundOn] = useLocalStorage<boolean>("dom.sound", true);
+  const [readLang, setReadLang] = useLocalStorage<string>("dom.readLang", "en-US");
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [streaming, setStreaming] = useState<{ side: SideKey; text: string } | null>(null);
