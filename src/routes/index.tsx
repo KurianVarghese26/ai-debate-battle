@@ -679,9 +679,10 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
 
   const toggleSpeak = async () => {
     if (typeof window === "undefined") return;
-    if (!("speechSynthesis" in window)) {
+    const browserWindow = window as Window & typeof globalThis & { speechSynthesis?: SpeechSynthesis };
+    if (!browserWindow.speechSynthesis) {
       try {
-        window.dispatchEvent(new Event(READ_STOP_EVENT));
+        browserWindow.dispatchEvent(new Event(READ_STOP_EVENT));
         setSpeaking(true);
         await speakWithGeneratedAudio();
       } catch (error) {
@@ -690,12 +691,12 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
       }
       return;
     }
-    const synth = window.speechSynthesis;
+    const synth = browserWindow.speechSynthesis;
     if (speaking) {
       stopReading();
       return;
     }
-    window.dispatchEvent(new Event(READ_STOP_EVENT));
+    browserWindow.dispatchEvent(new Event(READ_STOP_EVENT));
     const u = new SpeechSynthesisUtterance(turn.text);
     u.lang = readLang;
     u.rate = 1;
