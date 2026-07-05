@@ -49,6 +49,26 @@ const DEFAULT_B: SideConfig = {
   persona: "A skeptical contrarian. Blunt, dry humor, pokes holes in every claim.",
 };
 
+const READ_LANGS: { code: string; label: string }[] = [
+  { code: "en-US", label: "English (US)" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "en-IN", label: "English (IN)" },
+  { code: "ml-IN", label: "Malayalam" },
+  { code: "hi-IN", label: "Hindi" },
+  { code: "ta-IN", label: "Tamil" },
+  { code: "te-IN", label: "Telugu" },
+  { code: "es-ES", label: "Spanish" },
+  { code: "fr-FR", label: "French" },
+  { code: "de-DE", label: "German" },
+  { code: "it-IT", label: "Italian" },
+  { code: "pt-BR", label: "Portuguese" },
+  { code: "ja-JP", label: "Japanese" },
+  { code: "ko-KR", label: "Korean" },
+  { code: "zh-CN", label: "Chinese" },
+  { code: "ar-SA", label: "Arabic" },
+  { code: "ru-RU", label: "Russian" },
+];
+
 function buildSystem(self: SideConfig, other: SideConfig, topic: string) {
   return `You are ${self.name}, one of two AI debaters in a live back-and-forth.
 
@@ -80,6 +100,7 @@ function Arena() {
   // Pause (seconds) between replies so you have time to read.
   const [pause, setPause] = useLocalStorage<number>("dom.pause", 1.5);
   const [soundOn, setSoundOn] = useLocalStorage<boolean>("dom.sound", true);
+  const [readLang, setReadLang] = useLocalStorage<string>("dom.readLang", "en-US");
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [streaming, setStreaming] = useState<{ side: SideKey; text: string } | null>(null);
@@ -139,10 +160,17 @@ function Arena() {
     setHistory((prev) => [entry, ...prev].slice(0, 50));
   }, [running, turns, topic, sideA, sideB, setHistory]);
 
+  const stickToBottomRef = useRef(true);
+  const onTranscriptScroll = useCallback(() => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distance < 80;
+  }, []);
   useEffect(() => {
     const el = transcriptRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [turns, streaming]);
 
   const runTurn = useCallback(
@@ -467,13 +495,30 @@ function Arena() {
                 />
                 <span className="w-12 text-right text-xs tabular-nums text-slate-400">{pause.toFixed(1)}s</span>
               </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Voice</span>
+                <Select value={readLang} onValueChange={setReadLang}>
+                  <SelectTrigger className="h-8 w-[140px] border-white/10 bg-slate-950/50 text-xs text-slate-100">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {READ_LANGS.map((l) => (
+                      <SelectItem key={l.code} value={l.code} className="text-xs">
+                        {l.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>
 
         <div
           ref={transcriptRef}
-          className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-white/10 bg-slate-950/40 p-4"
+          onScroll={onTranscriptScroll}
+          className="mt-4 h-[60vh] space-y-3 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-slate-950/40 p-4"
+          style={{ WebkitOverflowScrolling: "touch" }}
         >
           {liveTurns.length === 0 && (
             <div className="py-16 text-center text-sm text-slate-500">
@@ -481,7 +526,7 @@ function Arena() {
             </div>
           )}
           {liveTurns.map((t, i) => (
-            <TurnBubble key={i} turn={t} />
+            <TurnBubble key={i} turn={t} readLang={readLang} />
           ))}
         </div>
       </main>
@@ -564,19 +609,10 @@ function SideCard({
   );
 }
 
-function TurnBubble({ turn }: { turn: Turn }) {
+function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
   const isA = turn.side === "A";
   const modelLabel = MODELS.find((m) => m.id === turn.model)?.label ?? turn.model;
   const [speaking, setSpeaking] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      // stop this bubble's speech when unmounted
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        // no-op safeguard; global cancel handled by toggle
-      }
-    };
-  }, []);
 
   const toggleSpeak = () => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -591,14 +627,21 @@ function TurnBubble({ turn }: { turn: Turn }) {
     }
     synth.cancel(); // stop any other bubble currently reading
     const u = new SpeechSynthesisUtterance(turn.text);
+    u.lang = readLang;
     u.rate = 1;
     u.pitch = isA ? 1.05 : 0.95;
-    // Try to pick distinct voices per side if available.
     const voices = synth.getVoices();
     if (voices.length) {
-      const preferred = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
-      const pool = preferred.length ? preferred : voices;
-      u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
+      const wantLang = readLang.toLowerCase();
+      const wantPrefix = wantLang.split("-")[0];
+      const exact = voices.filter((v) => v.lang.toLowerCase() === wantLang);
+      const prefix = voices.filter((v) => v.lang.toLowerCase().startsWith(wantPrefix));
+      const pool = exact.length ? exact : prefix.length ? prefix : [];
+      if (pool.length) {
+        u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
+      } else {
+        toast.message(`No ${readLang} voice installed on this device — using system default.`);
+      }
     }
     u.onend = () => setSpeaking(false);
     u.onerror = () => setSpeaking(false);
