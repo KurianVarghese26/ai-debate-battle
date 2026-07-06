@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-type Body = { text?: string; lang?: string; speed?: number };
+type Body = { text?: string; lang?: string; speed?: number; stream?: boolean };
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 20;
