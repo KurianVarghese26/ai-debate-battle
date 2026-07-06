@@ -21,6 +21,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 import { DEFAULT_MODEL, MODELS } from "@/lib/models";
 import { useLocalStorage } from "@/lib/storage";
+import { streamSpeech, type SpeechHandle } from "@/lib/tts";
 
 export const Route = createFileRoute("/")({
   component: Arena,
