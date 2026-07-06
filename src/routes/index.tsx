@@ -472,33 +472,25 @@ function Arena() {
                 <button
                   type="button"
                   onClick={() => {
-                    const next = !soundOn;
-                    setSoundOn(next);
+                    const next = !autoRead;
+                    setAutoRead(next);
                     if (next) {
-                      try {
-                        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-                        if (!audioCtxRef.current) audioCtxRef.current = new AC();
-                        if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
-                        // Tiny click so the user hears sound is on.
-                        const ctx = audioCtxRef.current;
-                        const now = ctx.currentTime;
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.frequency.value = 550;
-                        gain.gain.setValueAtTime(0.0001, now);
-                        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
-                        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-                        osc.connect(gain).connect(ctx.destination);
-                        osc.start(now);
-                        osc.stop(now + 0.2);
-                      } catch { /* ignore */ }
+                      ensureAudioCtx();
+                      toast.success("Read aloud enabled — new replies will be spoken.");
+                    } else {
+                      speechHandleRef.current?.stop();
+                      speechHandleRef.current = null;
                     }
                   }}
-                  className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
-                  aria-label={soundOn ? "Mute" : "Unmute"}
-                  title={soundOn ? "Sound on" : "Sound off"}
+                  className={`grid h-8 w-8 place-items-center rounded-md border transition-colors ${
+                    autoRead
+                      ? "border-fuchsia-400/50 bg-fuchsia-500/20 text-fuchsia-200"
+                      : "border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
+                  }`}
+                  aria-label={autoRead ? "Turn off read aloud" : "Read aloud all replies"}
+                  title={autoRead ? "Read aloud: on" : "Read aloud all replies"}
                 >
-                  {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                  {autoRead ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
                 </button>
               </div>
               <div className="flex min-w-[220px] items-center gap-2">
