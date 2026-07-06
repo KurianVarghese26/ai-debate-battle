@@ -624,18 +624,12 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
   const isA = turn.side === "A";
   const modelLabel = MODELS.find((m) => m.id === turn.model)?.label ?? turn.model;
   const [speaking, setSpeaking] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const speechAbortRef = useRef<AbortController | null>(null);
+  const handleRef = useRef<SpeechHandle | null>(null);
+  const ctxRef = useRef<AudioContext | null>(null);
 
   const stopReading = useCallback(() => {
-    stopBrowserSpeech();
-    speechAbortRef.current?.abort();
-    speechAbortRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
-    }
+    handleRef.current?.stop();
+    handleRef.current = null;
     setSpeaking(false);
   }, []);
 
@@ -648,92 +642,31 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
     };
   }, [stopReading]);
 
-  const speakWithGeneratedAudio = useCallback(async () => {
-    const controller = new AbortController();
-    speechAbortRef.current = controller;
-    const res = await fetch("/api/speech", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: turn.text, lang: readLang, speed: 1 }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const message = await res.text().catch(() => "");
-      throw new Error(message || `Text-to-speech failed (${res.status})`);
-    }
-    const blob = await res.blob();
-    if (controller.signal.aborted) return;
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      if (audioRef.current === audio) audioRef.current = null;
-      setSpeaking(false);
-    };
-    audio.onerror = () => {
-      URL.revokeObjectURL(url);
-      if (audioRef.current === audio) audioRef.current = null;
-      setSpeaking(false);
-      toast.error("Audio playback failed.");
-    };
-    await audio.play();
-  }, [readLang, turn.text]);
-
   const toggleSpeak = async () => {
     if (typeof window === "undefined") return;
-    const browserWindow = window as Window & typeof globalThis & { speechSynthesis?: SpeechSynthesis };
-    if (!browserWindow.speechSynthesis) {
-      try {
-        browserWindow.dispatchEvent(new Event(READ_STOP_EVENT));
-        setSpeaking(true);
-        await speakWithGeneratedAudio();
-      } catch (error) {
-        if ((error as Error).name !== "AbortError") toast.error((error as Error).message || "Text-to-speech failed.");
-        setSpeaking(false);
-      }
-      return;
-    }
-    const synth = browserWindow.speechSynthesis;
     if (speaking) {
       stopReading();
       return;
     }
-    browserWindow.dispatchEvent(new Event(READ_STOP_EVENT));
-    const u = new SpeechSynthesisUtterance(turn.text);
-    u.lang = readLang;
-    u.rate = 1;
-    u.pitch = isA ? 1.05 : 0.95;
-    const voices = synth.getVoices();
-    let hasMatchingVoice = false;
-    if (voices.length) {
-      const wantLang = readLang.toLowerCase();
-      const wantPrefix = wantLang.split("-")[0];
-      const exact = voices.filter((v) => v.lang.toLowerCase() === wantLang);
-      const prefix = voices.filter((v) => v.lang.toLowerCase().startsWith(wantPrefix));
-      const pool = exact.length ? exact : prefix.length ? prefix : [];
-      if (pool.length) {
-        u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
-        hasMatchingVoice = true;
+    window.dispatchEvent(new Event(READ_STOP_EVENT));
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!ctxRef.current) ctxRef.current = new AC({ sampleRate: 24000 });
+      const ctx = ctxRef.current;
+      setSpeaking(true);
+      const handle = await streamSpeech({ text: turn.text, lang: readLang, ctx });
+      handleRef.current = handle;
+      await handle.done;
+      if (handleRef.current === handle) handleRef.current = null;
+      setSpeaking(false);
+    } catch (err) {
+      setSpeaking(false);
+      if ((err as Error).name !== "AbortError") {
+        toast.error((err as Error).message || "Text-to-speech failed.");
       }
     }
-
-    if (!hasMatchingVoice) {
-      try {
-        setSpeaking(true);
-        await speakWithGeneratedAudio();
-      } catch (error) {
-        if ((error as Error).name !== "AbortError") toast.error((error as Error).message || "Text-to-speech failed.");
-        setSpeaking(false);
-      }
-      return;
-    }
-
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
-    setSpeaking(true);
-    synth.speak(u);
   };
+
 
   return (
     <div className={`flex ${isA ? "justify-start" : "justify-end"}`}>
