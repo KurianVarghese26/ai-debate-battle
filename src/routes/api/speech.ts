@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-type Body = { text?: string; lang?: string; speed?: number };
+type Body = { text?: string; lang?: string; speed?: number; stream?: boolean };
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 20;
@@ -83,6 +83,7 @@ export const Route = createFileRoute("/api/speech")({
         if (!text) return new Response("Text is required", { status: 400 });
         if (text.length > 4000) return new Response("Text too long", { status: 400 });
 
+        const wantsStream = body.stream !== false;
         try {
           const upstream = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
             method: "POST",
@@ -94,10 +95,10 @@ export const Route = createFileRoute("/api/speech")({
               model: "openai/gpt-4o-mini-tts",
               input: text,
               voice: "alloy",
-              response_format: "mp3",
-              stream_format: "audio",
+              response_format: wantsStream ? "pcm" : "mp3",
+              stream_format: wantsStream ? "sse" : "audio",
               speed,
-              instructions: `Read this text naturally in ${supportedLangNames[lang]}. Preserve the language and pronunciation of the supplied text.`,
+              instructions: `Read this text naturally in ${supportedLangNames[lang]}. Preserve the language and pronunciation of the supplied text. Speak with a warm, conversational tone and a lively pace.`,
             }),
             signal: request.signal,
           });
@@ -109,7 +110,9 @@ export const Route = createFileRoute("/api/speech")({
 
           return new Response(upstream.body, {
             headers: {
-              "Content-Type": upstream.headers.get("content-type") || "audio/mpeg",
+              "Content-Type":
+                upstream.headers.get("content-type") ||
+                (wantsStream ? "text/event-stream" : "audio/mpeg"),
               "Cache-Control": "no-store",
             },
           });

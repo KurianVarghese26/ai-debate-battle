@@ -21,6 +21,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 import { DEFAULT_MODEL, MODELS } from "@/lib/models";
 import { useLocalStorage } from "@/lib/storage";
+import { streamSpeech, type SpeechHandle } from "@/lib/tts";
 
 export const Route = createFileRoute("/")({
   component: Arena,
@@ -107,7 +108,7 @@ function Arena() {
   const [history, setHistory] = useLocalStorage<SavedDebate[]>("dom.history", []);
   // Pause (seconds) between replies so you have time to read.
   const [pause, setPause] = useLocalStorage<number>("dom.pause", 1.5);
-  const [soundOn, setSoundOn] = useLocalStorage<boolean>("dom.sound", true);
+  const [autoRead, setAutoRead] = useLocalStorage<boolean>("dom.autoRead", false);
   const [readLang, setReadLang] = useLocalStorage<string>("dom.readLang", "en-US");
 
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -118,33 +119,38 @@ function Arena() {
   const stopRequestedRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const speechHandleRef = useRef<SpeechHandle | null>(null);
   const pauseRef = useRef(pause);
-  const soundRef = useRef(soundOn);
+  const autoReadRef = useRef(autoRead);
+  const readLangRef = useRef(readLang);
   useEffect(() => { pauseRef.current = pause; }, [pause]);
-  useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
+  useEffect(() => { autoReadRef.current = autoRead; }, [autoRead]);
+  useEffect(() => { readLangRef.current = readLang; }, [readLang]);
 
-  const playBlip = useCallback((side: SideKey) => {
-    if (!soundRef.current) return;
+  const ensureAudioCtx = useCallback(() => {
     try {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!audioCtxRef.current) audioCtxRef.current = new AC();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") void ctx.resume();
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = side === "A" ? 660 : 440;
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.15, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.25);
+      if (!audioCtxRef.current) audioCtxRef.current = new AC({ sampleRate: 24000 });
+      if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+      return audioCtxRef.current;
     } catch {
-      // ignore
+      return null;
     }
   }, []);
+
+  const readTurnAloud = useCallback(async (text: string) => {
+    const ctx = ensureAudioCtx();
+    if (!ctx) return;
+    speechHandleRef.current?.stop();
+    try {
+      const handle = await streamSpeech({ text, lang: readLangRef.current, ctx });
+      speechHandleRef.current = handle;
+      await handle.done;
+      if (speechHandleRef.current === handle) speechHandleRef.current = null;
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") toast.error("Read-aloud failed.");
+    }
+  }, [ensureAudioCtx]);
 
 
   const savedRef = useRef(false);
@@ -276,20 +282,25 @@ function Arena() {
       if (!t) break;
       priorTurns = [...priorTurns, t];
       setTurns(priorTurns);
-      playBlip(t.side);
+      // Auto-read the reply aloud, then pause. Skip pause if reading was long.
+      if (autoReadRef.current) {
+        await readTurnAloud(t.text);
+        if (stopRequestedRef.current) break;
+      }
       nextSide = nextSide === "A" ? "B" : "A";
-      // Pause between replies (seconds) so the reader can catch up.
       const delay = Math.max(0, Math.round(pauseRef.current * 1000));
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       if (priorTurns.length >= 40) break; // hard safety cap
     }
 
     setRunning(false);
-  }, [running, runTurn, topic, playBlip]);
+  }, [running, runTurn, topic, readTurnAloud]);
 
   const stop = useCallback(() => {
     stopRequestedRef.current = true;
     abortRef.current?.abort();
+    speechHandleRef.current?.stop();
+    speechHandleRef.current = null;
   }, []);
 
   const reset = useCallback(() => {
@@ -461,33 +472,25 @@ function Arena() {
                 <button
                   type="button"
                   onClick={() => {
-                    const next = !soundOn;
-                    setSoundOn(next);
+                    const next = !autoRead;
+                    setAutoRead(next);
                     if (next) {
-                      try {
-                        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-                        if (!audioCtxRef.current) audioCtxRef.current = new AC();
-                        if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
-                        // Tiny click so the user hears sound is on.
-                        const ctx = audioCtxRef.current;
-                        const now = ctx.currentTime;
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.frequency.value = 550;
-                        gain.gain.setValueAtTime(0.0001, now);
-                        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
-                        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-                        osc.connect(gain).connect(ctx.destination);
-                        osc.start(now);
-                        osc.stop(now + 0.2);
-                      } catch { /* ignore */ }
+                      ensureAudioCtx();
+                      toast.success("Read aloud enabled — new replies will be spoken.");
+                    } else {
+                      speechHandleRef.current?.stop();
+                      speechHandleRef.current = null;
                     }
                   }}
-                  className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
-                  aria-label={soundOn ? "Mute" : "Unmute"}
-                  title={soundOn ? "Sound on" : "Sound off"}
+                  className={`grid h-8 w-8 place-items-center rounded-md border transition-colors ${
+                    autoRead
+                      ? "border-fuchsia-400/50 bg-fuchsia-500/20 text-fuchsia-200"
+                      : "border-white/10 bg-slate-950/50 text-slate-300 hover:text-slate-100"
+                  }`}
+                  aria-label={autoRead ? "Turn off read aloud" : "Read aloud all replies"}
+                  title={autoRead ? "Read aloud: on" : "Read aloud all replies"}
                 >
-                  {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                  {autoRead ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
                 </button>
               </div>
               <div className="flex min-w-[220px] items-center gap-2">
@@ -621,18 +624,12 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
   const isA = turn.side === "A";
   const modelLabel = MODELS.find((m) => m.id === turn.model)?.label ?? turn.model;
   const [speaking, setSpeaking] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const speechAbortRef = useRef<AbortController | null>(null);
+  const handleRef = useRef<SpeechHandle | null>(null);
+  const ctxRef = useRef<AudioContext | null>(null);
 
   const stopReading = useCallback(() => {
-    stopBrowserSpeech();
-    speechAbortRef.current?.abort();
-    speechAbortRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
-    }
+    handleRef.current?.stop();
+    handleRef.current = null;
     setSpeaking(false);
   }, []);
 
@@ -645,92 +642,31 @@ function TurnBubble({ turn, readLang }: { turn: Turn; readLang: string }) {
     };
   }, [stopReading]);
 
-  const speakWithGeneratedAudio = useCallback(async () => {
-    const controller = new AbortController();
-    speechAbortRef.current = controller;
-    const res = await fetch("/api/speech", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: turn.text, lang: readLang, speed: 1 }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const message = await res.text().catch(() => "");
-      throw new Error(message || `Text-to-speech failed (${res.status})`);
-    }
-    const blob = await res.blob();
-    if (controller.signal.aborted) return;
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      if (audioRef.current === audio) audioRef.current = null;
-      setSpeaking(false);
-    };
-    audio.onerror = () => {
-      URL.revokeObjectURL(url);
-      if (audioRef.current === audio) audioRef.current = null;
-      setSpeaking(false);
-      toast.error("Audio playback failed.");
-    };
-    await audio.play();
-  }, [readLang, turn.text]);
-
   const toggleSpeak = async () => {
     if (typeof window === "undefined") return;
-    const browserWindow = window as Window & typeof globalThis & { speechSynthesis?: SpeechSynthesis };
-    if (!browserWindow.speechSynthesis) {
-      try {
-        browserWindow.dispatchEvent(new Event(READ_STOP_EVENT));
-        setSpeaking(true);
-        await speakWithGeneratedAudio();
-      } catch (error) {
-        if ((error as Error).name !== "AbortError") toast.error((error as Error).message || "Text-to-speech failed.");
-        setSpeaking(false);
-      }
-      return;
-    }
-    const synth = browserWindow.speechSynthesis;
     if (speaking) {
       stopReading();
       return;
     }
-    browserWindow.dispatchEvent(new Event(READ_STOP_EVENT));
-    const u = new SpeechSynthesisUtterance(turn.text);
-    u.lang = readLang;
-    u.rate = 1;
-    u.pitch = isA ? 1.05 : 0.95;
-    const voices = synth.getVoices();
-    let hasMatchingVoice = false;
-    if (voices.length) {
-      const wantLang = readLang.toLowerCase();
-      const wantPrefix = wantLang.split("-")[0];
-      const exact = voices.filter((v) => v.lang.toLowerCase() === wantLang);
-      const prefix = voices.filter((v) => v.lang.toLowerCase().startsWith(wantPrefix));
-      const pool = exact.length ? exact : prefix.length ? prefix : [];
-      if (pool.length) {
-        u.voice = pool[isA ? 0 : Math.min(1, pool.length - 1)];
-        hasMatchingVoice = true;
+    window.dispatchEvent(new Event(READ_STOP_EVENT));
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!ctxRef.current) ctxRef.current = new AC({ sampleRate: 24000 });
+      const ctx = ctxRef.current;
+      setSpeaking(true);
+      const handle = await streamSpeech({ text: turn.text, lang: readLang, ctx });
+      handleRef.current = handle;
+      await handle.done;
+      if (handleRef.current === handle) handleRef.current = null;
+      setSpeaking(false);
+    } catch (err) {
+      setSpeaking(false);
+      if ((err as Error).name !== "AbortError") {
+        toast.error((err as Error).message || "Text-to-speech failed.");
       }
     }
-
-    if (!hasMatchingVoice) {
-      try {
-        setSpeaking(true);
-        await speakWithGeneratedAudio();
-      } catch (error) {
-        if ((error as Error).name !== "AbortError") toast.error((error as Error).message || "Text-to-speech failed.");
-        setSpeaking(false);
-      }
-      return;
-    }
-
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
-    setSpeaking(true);
-    synth.speak(u);
   };
+
 
   return (
     <div className={`flex ${isA ? "justify-start" : "justify-end"}`}>
