@@ -282,20 +282,25 @@ function Arena() {
       if (!t) break;
       priorTurns = [...priorTurns, t];
       setTurns(priorTurns);
-      playBlip(t.side);
+      // Auto-read the reply aloud, then pause. Skip pause if reading was long.
+      if (autoReadRef.current) {
+        await readTurnAloud(t.text);
+        if (stopRequestedRef.current) break;
+      }
       nextSide = nextSide === "A" ? "B" : "A";
-      // Pause between replies (seconds) so the reader can catch up.
       const delay = Math.max(0, Math.round(pauseRef.current * 1000));
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       if (priorTurns.length >= 40) break; // hard safety cap
     }
 
     setRunning(false);
-  }, [running, runTurn, topic, playBlip]);
+  }, [running, runTurn, topic, readTurnAloud]);
 
   const stop = useCallback(() => {
     stopRequestedRef.current = true;
     abortRef.current?.abort();
+    speechHandleRef.current?.stop();
+    speechHandleRef.current = null;
   }, []);
 
   const reset = useCallback(() => {
