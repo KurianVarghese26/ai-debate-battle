@@ -52,7 +52,7 @@ function getRequestOriginHost(request: Request) {
   }
 }
 
-function corsHeaders(request: Request) {
+function corsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("origin");
   if (!origin) return {};
 
