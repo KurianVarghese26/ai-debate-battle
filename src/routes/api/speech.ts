@@ -27,6 +27,10 @@ const supportedLangNames: Record<string, string> = {
 };
 
 function sameOrigin(request: Request) {
+  const fetchSite = request.headers.get("sec-fetch-site")?.toLowerCase();
+  if (fetchSite === "same-origin" || fetchSite === "same-site") return true;
+  if (fetchSite === "cross-site") return false;
+
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
   const requestHost = new URL(request.url).host;
@@ -37,7 +41,13 @@ function sameOrigin(request: Request) {
       return null;
     }
   })();
-  return !!originHost && originHost === requestHost;
+  if (!originHost) return false;
+  if (originHost === requestHost) return true;
+
+  const originProject = originHost.endsWith(".lovableproject.com")
+    ? originHost.slice(0, -".lovableproject.com".length)
+    : null;
+  return !!originProject && requestHost.endsWith(".lovable.app") && requestHost.includes(originProject);
 }
 
 function rateLimit(request: Request) {
@@ -78,7 +88,7 @@ export const Route = createFileRoute("/api/speech")({
         const lang = body.lang && supportedLangNames[body.lang] ? body.lang : "en-US";
         const speed = typeof body.speed === "number" && Number.isFinite(body.speed)
           ? Math.min(2, Math.max(0.5, body.speed))
-          : 1;
+          : 1.2;
 
         if (!text) return new Response("Text is required", { status: 400 });
         if (text.length > 4000) return new Response("Text too long", { status: 400 });
@@ -98,7 +108,7 @@ export const Route = createFileRoute("/api/speech")({
               response_format: wantsStream ? "pcm" : "mp3",
               stream_format: wantsStream ? "sse" : "audio",
               speed,
-              instructions: `Read this text naturally in ${supportedLangNames[lang]}. Preserve the language and pronunciation of the supplied text. Speak with a warm, conversational tone and a lively pace.`,
+              instructions: `Read this text naturally in ${supportedLangNames[lang]}. Preserve the language and pronunciation of the supplied text. Speak smoothly with a clear, energetic Gemini-style pace, natural pauses, and a warm conversational tone.`,
             }),
             signal: request.signal,
           });
