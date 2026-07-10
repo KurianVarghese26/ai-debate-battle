@@ -16,7 +16,7 @@ type StartOpts = {
 };
 
 export async function streamSpeech(opts: StartOpts): Promise<SpeechHandle> {
-  const { text, lang, speed = 1, ctx, signal } = opts;
+  const { text, lang, speed = 1.25, ctx, signal } = opts;
 
   if (ctx.state === "suspended") {
     try { await ctx.resume(); } catch { /* ignore */ }
@@ -30,6 +30,7 @@ export async function streamSpeech(opts: StartOpts): Promise<SpeechHandle> {
   let playhead = 0;
   let pending = new Uint8Array(0);
   let stopped = false;
+  let inputEnded = false;
   let resolveDone!: () => void;
   const done = new Promise<void>((r) => { resolveDone = r; });
 
@@ -53,9 +54,10 @@ export async function streamSpeech(opts: StartOpts): Promise<SpeechHandle> {
     const usable = bytes.length - (bytes.length % 2);
     pending = bytes.slice(usable);
     if (usable === 0) return;
-    const samples = new Int16Array(bytes.buffer, bytes.byteOffset, usable / 2);
-    const floats = new Float32Array(samples.length);
-    for (let i = 0; i < samples.length; i++) floats[i] = samples[i] / 32768;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, usable);
+    const sampleCount = usable / 2;
+    const floats = new Float32Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) floats[i] = view.getInt16(i * 2, true) / 32768;
     const buffer = ctx.createBuffer(1, floats.length, 24000);
     buffer.copyToChannel(floats, 0);
     const src = ctx.createBufferSource();
@@ -70,6 +72,11 @@ export async function streamSpeech(opts: StartOpts): Promise<SpeechHandle> {
     src.onended = () => {
       const i = scheduled.indexOf(src);
       if (i >= 0) scheduled.splice(i, 1);
+      if (inputEnded && scheduled.length === 0 && !stopped) {
+        stopped = true;
+        signal?.removeEventListener("abort", onOuterAbort);
+        resolveDone();
+      }
     };
   };
 
@@ -92,6 +99,7 @@ export async function streamSpeech(opts: StartOpts): Promise<SpeechHandle> {
         const { value, done: rdone } = await reader.read();
         if (rdone) break;
         sseBuf += value;
+        sseBuf = sseBuf.replace(/\r\n/g, "\n");
         let idx;
         while ((idx = sseBuf.indexOf("\n\n")) !== -1) {
           const rawEvent = sseBuf.slice(0, idx);
@@ -114,15 +122,12 @@ export async function streamSpeech(opts: StartOpts): Promise<SpeechHandle> {
         }
       }
 
-      // Wait for the last scheduled chunk to finish before resolving.
-      const wait = Math.max(0, playhead - ctx.currentTime);
-      setTimeout(() => {
-        if (!stopped) {
-          stopped = true;
-          signal?.removeEventListener("abort", onOuterAbort);
-          resolveDone();
-        }
-      }, wait * 1000 + 50);
+      inputEnded = true;
+      if (scheduled.length === 0 && !stopped) {
+        stopped = true;
+        signal?.removeEventListener("abort", onOuterAbort);
+        resolveDone();
+      }
     } catch (err) {
       if (!stopped) {
         stopped = true;
