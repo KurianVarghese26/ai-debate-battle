@@ -26,28 +26,60 @@ const supportedLangNames: Record<string, string> = {
   "ru-RU": "Russian",
 };
 
-function sameOrigin(request: Request) {
-  const fetchSite = request.headers.get("sec-fetch-site")?.toLowerCase();
-  if (fetchSite === "same-origin" || fetchSite === "same-site") return true;
-  if (fetchSite === "cross-site") return false;
-
-  const origin = request.headers.get("origin");
-  const referer = request.headers.get("referer");
-  const requestHost = new URL(request.url).host;
-  const originHost = (() => {
-    try {
-      return origin ? new URL(origin).host : referer ? new URL(referer).host : null;
-    } catch {
-      return null;
-    }
-  })();
-  if (!originHost) return false;
+function isAllowedHost(requestHost: string, originHost: string) {
   if (originHost === requestHost) return true;
 
   const originProject = originHost.endsWith(".lovableproject.com")
     ? originHost.slice(0, -".lovableproject.com".length)
     : null;
-  return !!originProject && requestHost.endsWith(".lovable.app") && requestHost.includes(originProject);
+  if (originProject && requestHost.endsWith(".lovable.app") && requestHost.includes(originProject)) {
+    return true;
+  }
+
+  const requestProject = requestHost.endsWith(".lovableproject.com")
+    ? requestHost.slice(0, -".lovableproject.com".length)
+    : null;
+  return !!requestProject && originHost.endsWith(".lovable.app") && originHost.includes(requestProject);
+}
+
+function getRequestOriginHost(request: Request) {
+  const origin = request.headers.get("origin");
+  const referer = request.headers.get("referer");
+  try {
+    return origin ? new URL(origin).host : referer ? new URL(referer).host : null;
+  } catch {
+    return null;
+  }
+}
+
+function corsHeaders(request: Request) {
+  const origin = request.headers.get("origin");
+  if (!origin) return {};
+
+  try {
+    const requestHost = new URL(request.url).host;
+    const originHost = new URL(origin).host;
+    if (!isAllowedHost(requestHost, originHost)) return {};
+  } catch {
+    return {};
+  }
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Vary": "Origin",
+  };
+}
+
+function sameOrigin(request: Request) {
+  const fetchSite = request.headers.get("sec-fetch-site")?.toLowerCase();
+  if (fetchSite === "same-origin" || fetchSite === "same-site") return true;
+
+  const requestHost = new URL(request.url).host;
+  const originHost = getRequestOriginHost(request);
+  if (!originHost) return false;
+  return isAllowedHost(requestHost, originHost);
 }
 
 function rateLimit(request: Request) {
@@ -68,20 +100,22 @@ function rateLimit(request: Request) {
 export const Route = createFileRoute("/api/speech")({
   server: {
     handlers: {
+      OPTIONS: async ({ request }) => new Response(null, { status: 204, headers: corsHeaders(request) }),
       POST: async ({ request }) => {
+        const responseHeaders = corsHeaders(request);
         const key = process.env.LOVABLE_API_KEY;
-        if (!key) return new Response("Missing LOVABLE_API_KEY", { status: 500 });
-        if (!sameOrigin(request)) return new Response("Forbidden", { status: 403 });
-        if (rateLimit(request)) return new Response("Too many read-aloud requests", { status: 429 });
+        if (!key) return new Response("Missing LOVABLE_API_KEY", { status: 500, headers: responseHeaders });
+        if (!sameOrigin(request)) return new Response("Forbidden", { status: 403, headers: responseHeaders });
+        if (rateLimit(request)) return new Response("Too many read-aloud requests", { status: 429, headers: responseHeaders });
 
         const raw = await request.text();
-        if (raw.length > 16 * 1024) return new Response("Payload too large", { status: 413 });
+        if (raw.length > 16 * 1024) return new Response("Payload too large", { status: 413, headers: responseHeaders });
 
         let body: Body;
         try {
           body = JSON.parse(raw) as Body;
         } catch {
-          return new Response("Invalid JSON", { status: 400 });
+          return new Response("Invalid JSON", { status: 400, headers: responseHeaders });
         }
 
         const text = body.text?.trim();
@@ -90,8 +124,8 @@ export const Route = createFileRoute("/api/speech")({
           ? Math.min(2, Math.max(0.5, body.speed))
           : 1.2;
 
-        if (!text) return new Response("Text is required", { status: 400 });
-        if (text.length > 4000) return new Response("Text too long", { status: 400 });
+        if (!text) return new Response("Text is required", { status: 400, headers: responseHeaders });
+        if (text.length > 4000) return new Response("Text too long", { status: 400, headers: responseHeaders });
 
         const wantsStream = body.stream !== false;
         try {
@@ -115,11 +149,12 @@ export const Route = createFileRoute("/api/speech")({
 
           if (!upstream.ok || !upstream.body) {
             const message = await upstream.text().catch(() => "");
-            return new Response(message || "Text-to-speech failed", { status: upstream.status });
+            return new Response(message || "Text-to-speech failed", { status: upstream.status, headers: responseHeaders });
           }
 
           return new Response(upstream.body, {
             headers: {
+              ...responseHeaders,
               "Content-Type":
                 upstream.headers.get("content-type") ||
                 (wantsStream ? "text/event-stream" : "audio/mpeg"),
@@ -129,7 +164,7 @@ export const Route = createFileRoute("/api/speech")({
         } catch (error) {
           if (request.signal.aborted) return new Response(null, { status: 499 });
           console.error(error);
-          return new Response("Text-to-speech failed", { status: 500 });
+          return new Response("Text-to-speech failed", { status: 500, headers: responseHeaders });
         }
       },
     },
