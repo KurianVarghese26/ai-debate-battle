@@ -1,48 +1,37 @@
 
-# AI vs AI Debate Arena
+## Goal
 
-A single-page app where two AI agents (each with a user-chosen model + custom personality) debate or discuss a piece of content the user provides. The conversation streams back and forth freely until the user hits stop.
+Retire the current colorful look. Rebuild the UI as a restrained, editorial "Paper & Ink" experience with Space Grotesk + DM Sans, and add a proper light/dark theme toggle (light by default).
 
-## Core UX
+## Design direction
 
-- **Split-screen layout**: left side = Agent A, right side = Agent B. Center column = the shared "topic/content" input and the streaming conversation transcript.
-- **Per side, user configures**:
-  - Display name
-  - Model (dropdown of all Lovable AI chat models — Gemini 3 Flash, Gemini 3.1 Flash Lite, Gemini 3.5 Flash, Gemini 3.1 Pro, Gemini 2.5 Pro/Flash/Flash-Lite, GPT-5, GPT-5 mini, GPT-5 nano, GPT-5.2, GPT-5.4 family, GPT-5.5)
-  - Character/personality (free-text textarea, e.g. "sarcastic economist who loves puns")
-- **Topic input**: big textarea for the content/topic to discuss.
-- **Controls**: Start, Stop, Reset. While running, "Stop" is prominent. New turns append live with streaming text.
-- **Transcript**: chat-style messages, colored/badged by side, showing which model + persona spoke. Auto-scroll to bottom.
+- Palette: Paper & Ink — off-white paper `#f5f3ee`, warm border `#e8e4dd`, ink `#2d2d2d`, deep ink `#0d0d0d`. Dark mode inverts to ink background with paper foreground, keeping the same restrained feel (no purple/blue/pink accents anywhere).
+- One accent only: deep ink (or paper in dark mode). No gradients, no glowing buttons, no rainbow model chips. Model/side identity communicated with typography weight, thin rules, and small serif labels — not color.
+- Typography: Space Grotesk for headings/labels, DM Sans for body. Tight tracking on display sizes, generous line-height in bubbles.
+- Layout: more whitespace, thin 1px borders, subtle paper texture on cards, quiet hover states, refined focus rings. Debate bubbles become editorial "columns" (LEFT / RIGHT labels above each turn), not colored chat balloons.
 
-## Conversation Loop
+## Theme system
 
-Free-flow: after the user hits Start, the app alternates turns A → B → A → B... Each turn calls the Lovable AI Gateway with:
-- system prompt built from that side's persona + the shared topic + "you are debating <other side name>"
-- full running transcript as prior messages (mapping the *other* side's turns to `user` role and this side's turns to `assistant` role, so the model sees a normal chat history)
+- Add a `ThemeProvider` (React context) that stores `theme: 'light' | 'dark'` in `localStorage` under `dom.theme` (default `light`) and toggles the `dark` class on `<html>`.
+- SSR-safe: read storage inside `useEffect` after mount; render neutral until hydrated to avoid mismatch. No `typeof window` in a `useState` initializer.
+- Header gets a `ThemeToggle` button (sun/moon lucide icons) next to existing controls.
+- Rewrite `src/styles.css` `:root` and `.dark` tokens to the Paper & Ink values (background, foreground, card, border, muted, primary, ring). Every component uses semantic tokens — no hardcoded `text-white` / `bg-black` / hex values in JSX.
 
-Streaming via AI SDK `streamText` through a TanStack server route (`/api/turn`). Client loops: after each turn finishes streaming, if not stopped, it fires the next turn for the other side. Stop button sets a flag that breaks the loop and aborts the in-flight stream.
+## Files to change
 
-## Persistence (LocalStorage)
+- `src/styles.css` — new token values for `:root` and `.dark`, register `--font-display` (Space Grotesk) and `--font-sans` (DM Sans) in `@theme`, remove any leftover colorful custom tokens.
+- `src/routes/__root.tsx` — add Google Fonts `<link>` tags (preconnect + Space Grotesk + DM Sans), keep existing metadata.
+- `src/components/theme-provider.tsx` (new) — context + hook, applies `.dark` class to `documentElement`.
+- `src/components/theme-toggle.tsx` (new) — icon button using shadcn Button.
+- `src/routes/index.tsx` — wrap page in `ThemeProvider`, mount `ThemeToggle` in the header, restyle: hero, controls panel, debate column, `TurnBubble`, buttons, and status chips using semantic tokens and the new type scale. Remove colorful side accents; replace with neutral "LEFT" / "RIGHT" serif labels and thin dividers.
 
-- One "current setup" saved (both sides' name/model/persona + last topic) so refresh keeps config.
-- Debate history: list of past debates `{ id, topic, sideA, sideB, messages, createdAt }` in a sidebar/drawer. Click to view read-only transcript. Delete per item and "clear all".
-- No accounts, no Cloud.
+## Out of scope
 
-## Design Direction
+- No changes to `/api/turn`, `/api/speech`, `src/lib/tts.ts`, or debate logic. TTS behavior, streaming, and language handling stay exactly as they are.
+- No new dependencies beyond Google Fonts via `<link>`.
 
-Since the user hasn't specified visuals, I'll generate 3 design directions (dark arena / editorial split / playful chat) via `design--create_directions` before building, so they pick the look.
+## Verification
 
-## Technical Details
-
-- Stack: existing TanStack Start + Tailwind v4 + shadcn (already set).
-- Server route: `src/routes/api/turn.ts` — POST `{ model, system, messages }` → streaming text response using `@ai-sdk/openai-compatible` + Lovable AI Gateway helper (`src/lib/ai-gateway.server.ts`).
-- Client: `src/routes/index.tsx` becomes the arena. Uses `fetch` with a `ReadableStream` reader for streaming (simpler than `useChat` since we drive two alternating agents manually) and an `AbortController` for Stop.
-- LocalStorage hooks: `useLocalStorage` for config + debate history.
-- Model list: constant array in `src/lib/models.ts` matching the Lovable AI chat catalog.
-- Lovable AI enabled + `LOVABLE_API_KEY` provisioned via `ai_gateway--create`.
-- Head metadata: real title/description for the arena on `__root.tsx`.
-
-## Out of Scope
-
-- Accounts, database, sharing links, exporting transcripts, voice, images.
-- Judge/scoring AI (can add later if requested).
+- Load `/` — confirm light mode renders in Paper & Ink with Space Grotesk headings.
+- Click theme toggle — `<html>` gets `dark` class, colors invert cleanly, no flash of unstyled content on reload.
+- Run a debate — bubbles, controls, and read-aloud button all use semantic tokens in both themes; no hardcoded colors remain.
