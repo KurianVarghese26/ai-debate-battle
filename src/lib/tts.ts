@@ -142,3 +142,62 @@ export async function streamSpeech(opts: StartOpts): Promise<SpeechHandle> {
 
   return { stop, done };
 }
+
+export function speakBrowser(text: string, lang: string, speed = 1.1): SpeechHandle {
+  let resolveDone!: () => void;
+  const done = new Promise<void>((r) => {
+    resolveDone = r;
+  });
+
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    resolveDone();
+    return { stop: () => {}, done };
+  }
+
+  // Cancel any ongoing speech
+  window.speechSynthesis.cancel();
+
+  // Strip any asterisks or stage directions for better speech output
+  const cleanText = text.replace(/\*.*?\*/g, "").trim();
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  utterance.lang = lang;
+  utterance.rate = speed;
+
+  // Attempt to select an appropriate voice
+  const voices = window.speechSynthesis.getVoices();
+  const voice = voices.find(
+    (v) =>
+      v.lang.toLowerCase() === lang.toLowerCase() ||
+      v.lang.toLowerCase().replace("_", "-") === lang.toLowerCase() ||
+      v.lang.toLowerCase().startsWith(lang.toLowerCase().split("-")[0])
+  );
+  if (voice) {
+    utterance.voice = voice;
+  }
+
+  let ended = false;
+  const stop = () => {
+    if (ended) return;
+    ended = true;
+    window.speechSynthesis.cancel();
+    resolveDone();
+  };
+
+  utterance.onend = () => {
+    if (ended) return;
+    ended = true;
+    resolveDone();
+  };
+
+  utterance.onerror = (e) => {
+    if (ended) return;
+    ended = true;
+    resolveDone();
+  };
+
+  window.speechSynthesis.speak(utterance);
+
+  return { stop, done };
+}
+
